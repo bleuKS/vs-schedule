@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
-const ADMIN_PW = import.meta.env.VITE_ADMIN_PASSWORD || 'vibeseoul2026';
-const VIEWER_PW = import.meta.env.VITE_VIEWER_PASSWORD || 'schedule2026';
+const ADMIN_PW = (import.meta.env.VITE_ADMIN_PASSWORD || 'vibeseoul2026').trim();
+const VIEWER_PW = (import.meta.env.VITE_VIEWER_PASSWORD || 'schedule2026').trim();
 
 export function checkAuth() {
   const saved = sessionStorage.getItem('vibeseoul-auth');

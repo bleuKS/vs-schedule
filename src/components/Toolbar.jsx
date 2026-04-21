@@ -18,7 +18,23 @@ export default function Toolbar({
   isReadOnly = false,
   role = 'admin',
   onLogout,
+  saveStatus = 'idle',
+  lastSavedAt = null,
+  saveError = null,
+  onManualSave,
 }) {
+  const saveLabel = (() => {
+    switch (saveStatus) {
+      case 'saving': return '저장 중...';
+      case 'saved': return lastSavedAt
+        ? `저장됨 · ${lastSavedAt.toLocaleTimeString('ko-KR', { timeZone: 'Europe/Berlin' })} (DE)`
+        : '저장됨';
+      case 'error': return `저장 실패 — ${saveError || '재시도'}`;
+      default: return lastSavedAt
+        ? `최근 저장 ${lastSavedAt.toLocaleTimeString('ko-KR', { timeZone: 'Europe/Berlin' })} (DE)`
+        : '대기';
+    }
+  })();
   const handleExportJSON = () => {
     exportToJSON(schedule, employees, shiftTypes);
   };
@@ -84,6 +100,15 @@ export default function Toolbar({
             </label>
           </>
         )}
+        <span
+          className={`save-status save-status-${saveStatus}`}
+          title={saveError || saveLabel}
+          onClick={saveStatus === 'error' && onManualSave ? onManualSave : undefined}
+          role={saveStatus === 'error' ? 'button' : undefined}
+        >
+          <span className="save-dot" />
+          {saveLabel}
+        </span>
         <span className="role-badge">{role === 'admin' ? '관리자' : '뷰어'}</span>
         <button className="logout-btn" onClick={onLogout}>로그아웃</button>
       </div>

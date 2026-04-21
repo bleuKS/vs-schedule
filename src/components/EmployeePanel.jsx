@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { EMPLOYMENT_TYPES } from '../data/employees';
+import { formatShiftLabel } from '../data/shiftTypes';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+function belongsToLocation(emp, filterLocation) {
+  if (!filterLocation) return true;
+  const locs = Array.isArray(emp.locations) && emp.locations.length ? emp.locations : ['store'];
+  return locs.includes(filterLocation);
+}
 
 export default function EmployeePanel({
   employees,
@@ -11,9 +18,12 @@ export default function EmployeePanel({
   shiftTypes,
   selectedShift,
   setSelectedShift,
+  filterLocation = null, // null = 전체, 'store' | 'cafe'
 }) {
   const [showManager, setShowManager] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+
+  const visibleEmployees = employees.filter(e => belongsToLocation(e, filterLocation));
 
   const getTypeInfo = (typeId) =>
     Object.values(EMPLOYMENT_TYPES).find(t => t.id === typeId);
@@ -44,6 +54,7 @@ export default function EmployeePanel({
       isMinor: false,
       contractHours: null,
       notes: '',
+      locations: filterLocation ? [filterLocation] : ['store'],
     };
     setEmployees(prev => [...prev, newEmp]);
     setEditingEmployee(newEmp);
@@ -55,9 +66,9 @@ export default function EmployeePanel({
     if (selectedEmployee === empId) setSelectedEmployee(null);
   };
 
-  // 유형별로 그룹화
+  // 유형별로 그룹화 (현재 location 필터 적용)
   const groupedEmployees = {};
-  for (const emp of employees) {
+  for (const emp of visibleEmployees) {
     const type = getTypeInfo(emp.type);
     const label = type?.label || emp.type;
     if (!groupedEmployees[label]) groupedEmployees[label] = [];
@@ -106,7 +117,7 @@ export default function EmployeePanel({
         <h3>시프트 타입</h3>
         <p className="hint">
           {selectedShift
-            ? `[${selectedShift.name}] ${selectedShift.start}:00~${selectedShift.end}:00 — 직원 선택 후 날짜 클릭`
+            ? `[${selectedShift.name}] ${formatShiftLabel(selectedShift)} — 직원 선택 후 날짜 클릭`
             : '시프트 선택 시 해당 시간대 일괄 배정'}
         </p>
         <div className="shift-list">
@@ -122,7 +133,7 @@ export default function EmployeePanel({
               className={`shift-btn ${selectedShift?.id === shift.id ? 'selected' : ''}`}
               onClick={() => handleShiftSelect(shift)}
             >
-              {shift.name} ({shift.start}:00~{shift.end}:00)
+              {shift.name} ({formatShiftLabel(shift)})
             </button>
           ))}
         </div>
@@ -136,7 +147,7 @@ export default function EmployeePanel({
         {showManager && (
           <div className="employee-manager">
             <button className="add-btn" onClick={handleAddEmployee}>+ 직원 추가</button>
-            {employees.map(emp => (
+            {visibleEmployees.map(emp => (
               <div key={emp.id} className="employee-edit-row">
                 {editingEmployee?.id === emp.id ? (
                   <EmployeeEditForm

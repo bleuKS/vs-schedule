@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
 import { EMPLOYMENT_TYPES } from '../data/employees';
 import { isHoliday, isSunday } from '../data/holidays';
-
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 8~19
+import { slotLabel } from '../data/shiftTypes';
 
 export default function ScheduleGrid({
   schedule,
@@ -17,7 +16,20 @@ export default function ScheduleGrid({
   selectedEmployee,
   setSelectedEmployee,
   selectedShift,
+  hourStart = 8,
+  hourEnd = 20,
+  slots: explicitSlots,
+  timeLabel,
 }) {
+  // 슬롯 키 리스트 — explicit 우선, 없으면 hour 범위로 정수 슬롯 생성
+  const SLOT_KEYS = useMemo(() => {
+    if (Array.isArray(explicitSlots) && explicitSlots.length) {
+      return explicitSlots.map(s => String(s));
+    }
+    return Array.from({ length: hourEnd - hourStart }, (_, i) => String(hourStart + i));
+  }, [explicitSlots, hourStart, hourEnd]);
+
+  const formatLabel = timeLabel || ((key) => slotLabel(key));
   const [viewMode, setViewMode] = useState('month'); // 'month' | 'week'
   const [currentWeek, setCurrentWeek] = useState(0);
 
@@ -41,7 +53,8 @@ export default function ScheduleGrid({
     let lastWeekNum = -1;
 
     for (const day of days) {
-      const d = new Date(day.dateStr);
+      const [yy, mm, dd] = day.dateStr.split('-').map(Number);
+      const d = new Date(yy, mm - 1, dd);
       const weekNum = Math.floor((d.getDate() + new Date(currentYear, currentMonth, 1).getDay() - 1) / 7);
       if (weekNum !== lastWeekNum && currentWeekDays.length > 0) {
         result.push(currentWeekDays);
@@ -133,16 +146,16 @@ export default function ScheduleGrid({
             </tr>
           </thead>
           <tbody>
-            {HOURS.map(hour => (
-              <tr key={hour}>
-                <td className="time-cell">{`${hour}:00`}</td>
+            {SLOT_KEYS.map(slotKey => (
+              <tr key={slotKey}>
+                <td className="time-cell">{formatLabel(slotKey)}</td>
                 {visibleDays.map(day => {
-                  const slot = schedule[day.dateStr]?.[`${hour}`] || [];
+                  const slot = schedule[day.dateStr]?.[slotKey] || [];
                   return (
                     <td
-                      key={`${day.dateStr}-${hour}`}
+                      key={`${day.dateStr}-${slotKey}`}
                       className={`schedule-cell ${day.holiday ? 'holiday-cell' : ''} ${selectedEmployee ? 'clickable' : ''}`}
-                      onClick={() => handleCellClick(day.dateStr, hour)}
+                      onClick={() => handleCellClick(day.dateStr, slotKey)}
                     >
                       {slot.map(empId => {
                         const emp = employees.find(e => e.id === empId);
@@ -151,7 +164,7 @@ export default function ScheduleGrid({
                             key={empId}
                             className="employee-chip"
                             style={{ backgroundColor: getEmployeeColor(empId), color: '#fff' }}
-                            onClick={(e) => handleNameClick(e, day.dateStr, hour, empId)}
+                            onClick={(e) => handleNameClick(e, day.dateStr, slotKey, empId)}
                             title={`${emp?.name || empId} — 클릭하여 제거`}
                           >
                             {emp?.name || empId}

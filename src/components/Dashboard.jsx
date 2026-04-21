@@ -50,9 +50,10 @@ export default function Dashboard({ schedule, employees, currentYear, currentMon
       const date = new Date(currentYear, currentMonth, d);
       if (date.getDay() === 0) continue;
       const empIds = new Set();
-      for (let h = 8; h < 20; h++) {
-        const slot = schedule[dateStr]?.[`${h}`] || [];
-        slot.forEach(id => empIds.add(id));
+      const daySchedule = schedule[dateStr] || {};
+      for (const key of Object.keys(daySchedule)) {
+        const slot = daySchedule[key];
+        if (Array.isArray(slot)) slot.forEach(id => empIds.add(id));
       }
       counts.push({ date: d, count: empIds.size, dayOfWeek: date.getDay() });
     }

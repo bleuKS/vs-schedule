@@ -1,6 +1,7 @@
 import { EMPLOYMENT_TYPES } from '../data/employees';
 import { isHoliday, isSunday } from '../data/holidays';
-import { calculateBreakMinutes } from '../data/shiftTypes';
+import { calculateBreakMinutes, slotDurationHours } from '../data/shiftTypes';
+import { parseDateStr, formatDateStr, buildDateStr, getDayOfWeek } from './dateUtils';
 
 // 경고 수준
 export const SEVERITY = {
@@ -8,25 +9,25 @@ export const SEVERITY = {
   WARNING: 'warning',
 };
 
-// 직원의 하루 근무시간 계산
+// 직원의 하루 근무시간 계산 (슬롯 키 형식 무관 — 60분/30분 슬롯 모두 지원)
 export function getDailyHours(schedule, employeeId, dateStr) {
   const daySchedule = schedule[dateStr];
   if (!daySchedule) return 0;
 
   let hours = 0;
-  for (let h = 8; h < 20; h++) {
-    const key = `${h}`;
-    if (daySchedule[key] && daySchedule[key].includes(employeeId)) {
-      hours += 1;
+  for (const key of Object.keys(daySchedule)) {
+    const list = daySchedule[key];
+    if (Array.isArray(list) && list.includes(employeeId)) {
+      hours += slotDurationHours(key);
     }
   }
   return hours;
 }
 
-// 직원의 주간 근무시간 계산
+// 직원의 주간 근무시간 계산 (월요일 시작, 독일 영업주 기준)
 export function getWeeklyHours(schedule, employeeId, dateStr) {
-  const date = new Date(dateStr);
-  const day = date.getDay();
+  const date = parseDateStr(dateStr);
+  const day = date.getDay(); // 0=일 ~ 6=토
   const monday = new Date(date);
   monday.setDate(date.getDate() - ((day + 6) % 7));
 
@@ -34,7 +35,7 @@ export function getWeeklyHours(schedule, employeeId, dateStr) {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const ds = d.toISOString().split('T')[0];
+    const ds = formatDateStr(d);
     total += getDailyHours(schedule, employeeId, ds);
   }
   return total;
@@ -45,7 +46,7 @@ export function getMonthlyHours(schedule, employeeId, year, month) {
   let total = 0;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
-    const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const ds = buildDateStr(year, month, d);
     total += getDailyHours(schedule, employeeId, ds);
   }
   return total;
@@ -54,24 +55,22 @@ export function getMonthlyHours(schedule, employeeId, year, month) {
 // 연속 근무일수 계산
 export function getConsecutiveDays(schedule, employeeId, dateStr) {
   let count = 0;
-  const date = new Date(dateStr);
+  const date = parseDateStr(dateStr);
 
-  // 이전 방향으로 계산
   for (let i = 0; i <= 13; i++) {
     const d = new Date(date);
     d.setDate(date.getDate() - i);
-    const ds = d.toISOString().split('T')[0];
+    const ds = formatDateStr(d);
     if (getDailyHours(schedule, employeeId, ds) > 0) {
       count++;
     } else {
       break;
     }
   }
-  // 다음 방향으로 계산 (당일 제외)
   for (let i = 1; i <= 13; i++) {
     const d = new Date(date);
     d.setDate(date.getDate() + i);
-    const ds = d.toISOString().split('T')[0];
+    const ds = formatDateStr(d);
     if (getDailyHours(schedule, employeeId, ds) > 0) {
       count++;
     } else {
@@ -92,7 +91,7 @@ export function validateSchedule(schedule, employees, year, month) {
     if (!empType) continue;
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dateStr = buildDateStr(year, month, d);
       const dailyHours = getDailyHours(schedule, emp.id, dateStr);
 
       if (dailyHours === 0) continue;
@@ -121,7 +120,7 @@ export function validateSchedule(schedule, employees, year, month) {
       }
 
       // 정기 휴무일 위반
-      const dayOfWeek = new Date(dateStr).getDay();
+      const dayOfWeek = getDayOfWeek(dateStr);
       if (emp.dayOff !== null && dayOfWeek === emp.dayOff) {
         warnings.push({
           severity: SEVERITY.WARNING,
@@ -166,7 +165,7 @@ export function validateSchedule(schedule, employees, year, month) {
 
       // 연속 근무일
       const consecutive = getConsecutiveDays(schedule, emp.id, dateStr);
-      if (consecutive > 6 && d === new Date(dateStr).getDate()) {
+      if (consecutive > 6 && d === parseDateStr(dateStr).getDate()) {
         // 중복 방지: 해당 날에만 경고
         const alreadyWarned = warnings.find(
           w => w.employee === emp.name && w.rule === '연속 근무 초과' && w.date === dateStr
@@ -193,7 +192,7 @@ export function validateSchedule(schedule, employees, year, month) {
 
     for (let weekStart = 1 - ((startDow + 6) % 7); weekStart <= daysInMonth; weekStart += 7) {
       const mondayDate = new Date(year, month, weekStart);
-      const mondayStr = mondayDate.toISOString().split('T')[0];
+      const mondayStr = formatDateStr(mondayDate);
       const weeklyHours = getWeeklyHours(schedule, emp.id, mondayStr);
 
       if (empType.maxWeeklyHours && weeklyHours > empType.maxWeeklyHours) {
@@ -222,7 +221,7 @@ export function validateSchedule(schedule, employees, year, month) {
         warnings.push({
           severity: SEVERITY.ERROR,
           employee: emp.name,
-          date: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+          date: buildDateStr(year, month, 1),
           rule: '미니잡 월 한도 초과',
           message: `${emp.name}: 월 ${monthlyHours}h (한도 ${empType.maxMonthlyHours}h)`,
         });

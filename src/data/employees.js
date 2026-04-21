@@ -38,7 +38,7 @@ export const EMPLOYMENT_TYPES = {
     recommendedDailyHours: 8,
     maxWeeklyHours: null,
     recommendedWeeklyHours: null,
-    maxMonthlyHours: 43,    // 556유로 / ~12.82유로 시급
+    maxMonthlyHours: 47,    // 603유로 / ~12.82유로 시급
   },
   MINDERJAEHRIG: {
     id: 'minderjaehrig',
@@ -47,6 +47,16 @@ export const EMPLOYMENT_TYPES = {
     maxDailyHours: 2,       // 주중 최대 2시간
     recommendedDailyHours: 2,
     maxWeeklyHours: 10,
+    recommendedWeeklyHours: null,
+    maxMonthlyHours: null,
+  },
+  FREELANCER: {
+    id: 'freelancer',
+    label: '프리랜서 (Freelancer)',
+    color: '#00bcd4',       // 청록색
+    maxDailyHours: 10,      // 독일 ArbZG 일반 제한 참고값
+    recommendedDailyHours: 8,
+    maxWeeklyHours: null,   // 계약 기반, 제한 없음
     recommendedWeeklyHours: null,
     maxMonthlyHours: null,
   },
@@ -202,7 +212,7 @@ export const DEFAULT_EMPLOYEES = [
     notes: '미니잡',
   },
 
-  // === 미성년자 ===
+  // === 미성년자 (매장·카페 겸직) ===
   {
     id: 'unoo',
     name: 'Unoo',
@@ -212,6 +222,7 @@ export const DEFAULT_EMPLOYEES = [
     isMinor: true,
     contractHours: null,
     notes: '미성년자 / 주중 최대 2시간',
+    locations: ['store', 'cafe'],
   },
   {
     id: 'nayeon',
@@ -222,15 +233,30 @@ export const DEFAULT_EMPLOYEES = [
     isMinor: true,
     contractHours: null,
     notes: '미성년자 / 주중 최대 2시간',
+    locations: ['store', 'cafe'],
+  },
+
+  // === 카페 일반 직원 ===
+  {
+    id: 'hyunah',
+    name: '현아',
+    displayName: '현아 (Hyunah)',
+    type: 'freelancer',
+    dayOff: null,
+    isMinor: false,
+    contractHours: null,
+    notes: '카페 프리랜서',
+    locations: ['cafe'],
   },
   {
-    id: 'yunhu',
-    name: 'Yunhu',
-    displayName: '윤후 (Yunhu)',
-    type: 'minderjaehrig',
+    id: 'youngjun',
+    name: '영준',
+    displayName: '영준 (Youngjun)',
+    type: 'minijob',
     dayOff: null,
-    isMinor: true,
+    isMinor: false,
     contractHours: null,
-    notes: '미성년자 / 주중 최대 2시간',
+    notes: '카페 직원',
+    locations: ['cafe'],
   },
 ];

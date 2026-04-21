@@ -19,7 +19,9 @@ export function isHoliday(dateStr) {
 }
 
 export function isSunday(dateStr) {
-  return new Date(dateStr).getDay() === 0;
+  // YYYY-MM-DD를 로컬 자정으로 파싱 (UTC 파싱 시 독일에서 하루 밀림)
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay() === 0;
 }
 
 export function isStoreClosedDay(dateStr) {
