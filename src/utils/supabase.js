@@ -39,18 +39,29 @@ export async function saveScheduleToDB(schedule, yearMonth, updatedBy = 'admin')
   }
 }
 
+// 반환 형태: { ok: true, data: object|null } 성공 (null = 레코드 없음)
+//            { ok: false, error: string }   실제 로드 실패 (네트워크/권한 등)
 export async function loadScheduleFromDB(yearMonth) {
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from('schedules')
-    .select('data')
-    .eq('year_month', yearMonth)
-    .single();
-  if (error) {
-    if (error.code !== 'PGRST116') console.error('스케줄 로딩 실패:', error);
-    return null;
+  if (!supabase) return { ok: true, data: null };
+  try {
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('data')
+      .eq('year_month', yearMonth)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Row not found — 정상적인 "빈 월"
+        return { ok: true, data: null };
+      }
+      console.error('스케줄 로딩 실패:', error);
+      return { ok: false, error: describeError(error) };
+    }
+    return { ok: true, data: data?.data || null };
+  } catch (err) {
+    console.error('스케줄 로딩 예외:', err);
+    return { ok: false, error: err.message || '네트워크 오류' };
   }
-  return data?.data || null;
 }
 
 // === 시프트 타입 레코드 ID (scope별) ===

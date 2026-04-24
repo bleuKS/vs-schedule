@@ -19,8 +19,47 @@ function scopedKey(yearMonth, scope) {
 
 // === 스케줄 ===
 
+// schedule 객체가 비어 있는지 판정 (키 자체가 없거나, 모든 날짜 슬롯이 비어 있음).
+function isEmptySchedule(schedule) {
+  if (!schedule || typeof schedule !== 'object') return true;
+  const keys = Object.keys(schedule);
+  if (keys.length === 0) return true;
+  return keys.every((dateKey) => {
+    const day = schedule[dateKey];
+    if (!day || typeof day !== 'object') return true;
+    return Object.values(day).every((slot) => !Array.isArray(slot) || slot.length === 0);
+  });
+}
+
 export async function saveSchedule(schedule, yearMonth, scope = 'store') {
   const key = scopedKey(yearMonth, scope);
+
+  // 방어층: 빈 스케줄로 기존 DB 데이터를 덮어쓰는 사고를 차단.
+  // 기존 DB에 데이터가 있는데 빈 객체로 덮어쓰려는 경우 저장을 거절.
+  if (isEmptySchedule(schedule)) {
+    if (isSupabaseConfigured()) {
+      try {
+        const existing = await loadScheduleFromDB(key);
+        if (existing && !isEmptySchedule(existing)) {
+          return { ok: false, error: '빈 스케줄로 기존 데이터를 덮어쓰는 것을 방지했습니다.' };
+        }
+      } catch {
+        // 로드 실패 시 저장도 보수적으로 스킵.
+        return { ok: false, error: '기존 데이터 확인 실패 — 저장 보류.' };
+      }
+    } else {
+      const existingLocal = localStorage.getItem(`${STORAGE_KEY}-${key}`);
+      if (existingLocal) {
+        try {
+          const parsed = JSON.parse(existingLocal);
+          if (!isEmptySchedule(parsed)) {
+            return { ok: false, error: '빈 스케줄로 기존 데이터를 덮어쓰는 것을 방지했습니다.' };
+          }
+        } catch { /* 파싱 실패면 덮어써도 됨 */ }
+      }
+    }
+  }
+
   try {
     localStorage.setItem(`${STORAGE_KEY}-${key}`, JSON.stringify(schedule));
   } catch (err) {
@@ -38,14 +77,26 @@ export async function saveSchedule(schedule, yearMonth, scope = 'store') {
   return { ok: true };
 }
 
+// 반환 형태: { ok: true, data: object }  성공 (빈 월이면 data = {})
+//            { ok: false, error: string } 실제 로드 실패 — 호출자는 저장을 보류해야 함
 export async function loadSchedule(yearMonth, scope = 'store') {
   const key = scopedKey(yearMonth, scope);
   if (isSupabaseConfigured()) {
-    const data = await loadScheduleFromDB(key);
-    if (data) return data;
+    const res = await loadScheduleFromDB(key);
+    if (!res.ok) {
+      // 네트워크/권한 오류 — 로컬 캐시라도 있으면 읽어주되 loadFailed 플래그로 저장 차단.
+      const local = localStorage.getItem(`${STORAGE_KEY}-${key}`);
+      return {
+        ok: false,
+        error: res.error,
+        data: local ? JSON.parse(local) : {},
+      };
+    }
+    if (res.data) return { ok: true, data: res.data };
+    // DB에 레코드 없음 → localStorage fallback
   }
   const local = localStorage.getItem(`${STORAGE_KEY}-${key}`);
-  return local ? JSON.parse(local) : {};
+  return { ok: true, data: local ? JSON.parse(local) : {} };
 }
 
 // === 직원 ===

@@ -54,23 +54,48 @@ export function useSchedule(options = {}) {
   const pendingRef = useRef(null); // { schedule, yearMonth }
   const flushVersionRef = useRef(0);
   const savedStatusTimerRef = useRef(null);
+  // 현재 schedule state가 어느 yearMonth의 로드 결과인지 추적. 월 전환 race 방지의 핵심.
+  const loadedYearMonthRef = useRef(null);
+  // 로드 실패(null 반환) 시 빈 객체로 DB를 덮어쓰지 않도록 차단하는 플래그.
+  const loadFailedRef = useRef(false);
 
   const yearMonth = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    // 월 전환 직전의 debounce 저장은 '취소'가 아닌 '즉시 flush' — 이전 월 키에 정상 저장.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const pending = pendingRef.current;
+    if (pending && !loadFailedRef.current) {
+      // fire-and-forget: localStorage는 동기 저장, Supabase는 백그라운드.
+      saveSchedule(pending.schedule, pending.yearMonth, scope);
+    }
+    pendingRef.current = null;
     (async () => {
       const loaders = [loadSchedule(yearMonth, scope), loadShiftTypes(scope)];
       if (manageEmployees) loaders.push(loadEmployees());
       const results = await Promise.all(loaders);
       if (cancelled) return;
-      const sched = results[0];
+      const schedRes = results[0]; // { ok, data, error? }
       const shifts = results[1];
       const emps = manageEmployees ? results[2] : null;
-      setSchedule(sched || {});
+      // 실제 네트워크/권한 오류(ok=false)일 때만 loadFailed 플래그. 정상 빈 월은 ok=true/data={}.
+      loadFailedRef.current = !schedRes.ok;
+      if (!schedRes.ok) {
+        setSaveError(`스케줄 로드 실패: ${schedRes.error}. 저장이 일시 차단됩니다.`);
+        setSaveStatus('error');
+      }
+      firstScheduleSkipRef.current = true;
+      firstShiftSkipRef.current = true;
+      if (manageEmployees) firstEmpSkipRef.current = true;
+      setSchedule(schedRes.data || {});
       if (shifts) setShiftTypes(shifts);
       if (manageEmployees && emps) setEmployees(emps);
+      loadedYearMonthRef.current = yearMonth;
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -128,7 +153,16 @@ export function useSchedule(options = {}) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const p = pendingRef.current;
-      if (p) performSave(p.schedule, p.yearMonth);
+      if (!p) return;
+      // 로드 실패 상태이면 저장하지 않음 — 빈 데이터로 DB 덮어쓰기 방지.
+      if (loadFailedRef.current) {
+        setSaveStatus('error');
+        setSaveError('이전 로드 실패로 저장 보류. 새로고침 후 다시 시도하세요.');
+        return;
+      }
+      // 저장 예약 시점의 yearMonth와 실제 로드된 yearMonth가 다르면 저장 중단.
+      if (loadedYearMonthRef.current !== p.yearMonth) return;
+      performSave(p.schedule, p.yearMonth);
     }, SAVE_DEBOUNCE);
   }, [performSave]);
 
@@ -136,17 +170,15 @@ export function useSchedule(options = {}) {
   const firstScheduleSkipRef = useRef(true);
   useEffect(() => {
     if (loading) return;
+    // schedule state가 현재 yearMonth의 로드 결과와 동기화되지 않은 상태에서는 저장 금지.
+    // (월 전환 직후 render에서 이전 월 schedule이 새 yearMonth로 저장되는 race 차단.)
+    if (loadedYearMonthRef.current !== yearMonth) return;
     if (firstScheduleSkipRef.current) {
       firstScheduleSkipRef.current = false;
       return;
     }
     scheduleSave(schedule, yearMonth);
   }, [schedule, loading, yearMonth, scheduleSave]);
-
-  // 월 이동 시 첫 렌더 스킵 플래그 재설정 (이미 로드된 값은 저장 불필요)
-  useEffect(() => {
-    firstScheduleSkipRef.current = true;
-  }, [yearMonth]);
 
   // 직원/시프트 변경 시 저장 (별도 저장 상태 표시 없음, 조용히 저장)
   const firstEmpSkipRef = useRef(true);
